@@ -1,142 +1,77 @@
+import time
 import easyocr
+from collections import defaultdict
+from PIL import Image
+
 reader = easyocr.Reader(['ch_sim','en'])
 
-def input (values, num):
-    exist = False
-    for index, i in enumerate(values):
-        if values[index] < num + 20 and values[index] > num - 20:
-            exist = True
-    if exist == False:
-        values.append(num)
-    return values
+startTime = time.time()
 
-
-def output (values, num):
-    for index, i in enumerate(values):
-        if values[index] < num + 20 and values[index] > num - 20:
-            return index
-    return False
-
-
-# i= 0
-# array = []
-# while i < 100:
-#     print(i)
-#     array = input(array, i)
-#     i += 9
-    
-# print(array)
-
-# for i in array:
-#     print(i)
-
-i = 2
-while i < 11:
-
-    xValues = []
-    yValues = []
-
-    xStandard = 0
-    yStandard = 0
-    row = 0
-    maxCol = 0
-    col = 0
-    # for r in reader.readtext('images/img11.v1.jpg'):
-    for r in reader.readtext('images/size'+str(i)+'.jpg'):
-        if len(r[1]) > 5:
-            continue
-        
-        col += 1
-
-        yStart = r[0][0][1]
-        yEnd = r[0][3][1]
-        xStart =  r[0][0][0]
-        xEnd =  r[0][1][0]
-        yAve = yEnd - yStart
-        xAve = xEnd - xStart
-        
-        if yStandard < yStart:
-            row += 1
-            if xStandard < xStart:
-                maxCol = col
-                xStandard = xEnd - xAve
-            col = 0
-            yStandard = yEnd
-
-        xValues = input(xValues, xEnd - xAve)
-        yValues = input(yValues, yEnd - yAve)
-
-    xValues.sort()
-    yValues.sort()
-    
-    table = [[]]
-    # table = [[0 for c in range(maxCol)] for r in range(row)]
-
-    # for r in reader.readtext('images/img11.v1.jpg'):
-
-
-    for r in reader.readtext('images/size'+str(i)+'.jpg'):
-        if len(r[1]) > 5:
+table_index = 11
+while table_index < 12:
+    words = defaultdict(list)
+    xPositions = []
+    for r in reader.readtext('images/size'+str(table_index)+'.png'):
+        if len(r[1]) > 20:
             continue
 
         yStart = r[0][0][1]
-        yEnd = r[0][3][1]
+        yEnd = r[0][2][1]
+        yMiddle = yEnd - ((yEnd - yStart) / 2)
         xStart =  r[0][0][0]
-        xEnd =  r[0][1][0]
-        yAve = yEnd - yStart
-        xAve = xEnd - xStart
-
-        xPosition = output(xValues, xEnd - xAve)
-        yPosition = output(yValues, yEnd - yAve)
+        xEnd = r[0][2][0]
+        xMiddle = xEnd - ((xEnd - xStart) / 2)
+        # save x-axis of the middle of the word as the first element of the array
+        # and the text is the second element
+        words[round(yMiddle, -1)].append([xMiddle, r[1]])
         
-        # print(xPosition, yPosition)
-        # table[yPosition][xPosition] = r[1]
-        if len(table) <= yPosition + 1:
-            table.append([])
-        table[yPosition].insert(xPosition, r[1])
+    table = []
+    for word in words:
+        words[word].sort()
+        # include rows if only have more than 3 columns
+        if len(words[word]) >= 3:
+            table.append(words[word])
+    # find the row that has the largest column number
+    longestRow = max(table)
 
-        # table[xPosition][yPosition] = r[1]
+    startingPoint = 0
+    for i, x in enumerate(longestRow):
+        # save the starting and the end point of the column in xPositions array
+        endPoint = startingPoint + ((x[0] - startingPoint) * 2)
+        xPositions.append([startingPoint, endPoint])
+        startingPoint = endPoint
 
-        htmlCode = "<table>"
+    # start building html tag
+    htmlCode = "<table>"
+    for index, value in enumerate(table):
+        # if first row, column tag is th, else td
+        htmlCode += "<tr>"
+        xPositionIndex = 0
+        if index == 0:
+            columnTag = "th"
+        else:
+            columnTag = "td"
 
-        for index, value in enumerate(table):
-            htmlCode += "<tr>"
-            for index2, value2 in enumerate(table[index]):
-                # if len(table[index]) < maxCol:
-                #     htmlCode += "<td colspan='"
-                #     htmlCode += str(maxCol)
-                #     htmlCode += "'>"
-                # else:
-                htmlCode += "<td>"
-                htmlCode += str(table[index][index2])
-                htmlCode += "</td>"
-            htmlCode += "</tr>"
+        for index2, position in enumerate(xPositions):
+            # if middle x_positions of the columns are in between starting and end point of the longest row
+            # add text to the column, or add a em
+            try:
+                if xPositions[index2][0] < table[index][xPositionIndex][0] and table[index][xPositionIndex][0] < xPositions[index2][1]:
+                    htmlCode += "<"+columnTag+">"
+                    htmlCode += table[index][xPositionIndex][1]
+                    htmlCode += "</"+columnTag+">"
+                    xPositionIndex += 1
+                else:
+                    htmlCode += "<"+columnTag+"></"+columnTag+">"
+            except IndexError:
+                htmlCode += "<"+columnTag+"></"+columnTag+">"
+                pass
 
-    # for r in reader.readtext('images/size'+str(i)+'.jpg'):
-        
-    #     yStart = r[0][0][1]
-    #     yEnd = r[0][3][1]
-    #     xStart =  r[0][0][0]
-    #     xEnd =  r[0][1][0]
-    #     yAve = yEnd - yStart
-    #     xAve = xEnd - xStart
+        htmlCode += "</tr>"
 
-    #     if xEnd < xStandard:
-    #         output += "</tr>"
-    #         xStandard = 0
-
-    #     if yStandard > yStart :
-    #         output += "<tr>"
-    #         yStandard = yAve  
-    #     output += "<td>"
-    #     output += r[1]
-    #     output += "</td>"
-
-    #     if xAve > xStandard:
-    #         xStandard = xAve
-    #     print(r)    
-
-        htmlCode += "</table>\n"
-    print(table)
+    htmlCode += "</table>\n"
     print(htmlCode)
-    i += 1
+    table_index += 1
+
+endTime = time.time()
+print(endTime - startTime)
