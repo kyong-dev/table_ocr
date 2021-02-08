@@ -2,76 +2,101 @@ import time
 import easyocr
 from collections import defaultdict
 from PIL import Image
+import mysql.connector
+import ftplib
+import os
+import datetime
 
-reader = easyocr.Reader(['ch_sim','en'])
+mydb = mysql.connector.connect(
+  host="192.168.0.25",
+  user="vvicuser",
+  password="Q1w2e3r4t5y6u7i8!",
+  database="vvic2",
+  port="3306"
+)
+
+mycursor = mydb.cursor()
+sql = "SELECT * FROM all_img WHERE ocr2 is NULL LIMIT 1"
+#sql = "SELECT * FROM all_img WHERE img_no = 28"
+
+#reader = easyocr.Reader(['ch_sim','en'])
+reader = easyocr.Reader(['ch_sim', 'en'])
 
 startTime = time.time()
 
-table_index = 11
-while table_index < 12:
-    words = defaultdict(list)
-    xPositions = []
-    for r in reader.readtext('images/size'+str(table_index)+'.png'):
-        if len(r[1]) > 20:
+
+
+#index = 1
+while True:
+    mycursor.execute(sql)
+    imgData = list(mycursor.fetchone())
+
+    if imgData == None:
+        break
+
+    imgNo = str(imgData[0])
+    filename = str(imgData[4])
+
+    update_sql = "UPDATE all_img SET ocr2 = ' ' WHERE img_no = " + imgNo 
+    mycursor.execute(update_sql)
+    mydb.commit()
+
+    imgURL = "./Product/Img/" + str(imgData[2]) + "/" + str(imgData[1])
+
+    print(f"{imgNo}. {imgURL}/{filename} updating...")
+
+    i = 0
+    connection = 20
+    while i < connection:
+        try:
+            ftp = ftplib.FTP("192.168.0.25") 
+            ftp.encoding = "UTF-8"
+
+            ftp.login("graeftp", "rmfo0309!")
+
+            ftp.cwd(imgURL)
+            newImage = open("img/" + filename, 'wb')
+            ftp.retrbinary("RETR " + filename, newImage.write)
+            newImage.close()
+            ftp.quit()
+            break
+        except Exception as e:
+            update_sql = "UPDATE all_img SET ocr2 = NULL WHERE img_no = " + imgNo 
+            mycursor.execute(update_sql)
+            mydb.commit()
+            time.sleep(1)
             continue
 
-        yStart = r[0][0][1]
-        yEnd = r[0][2][1]
-        yMiddle = yEnd - ((yEnd - yStart) / 2)
-        xStart =  r[0][0][0]
-        xEnd = r[0][2][0]
-        xMiddle = xEnd - ((xEnd - xStart) / 2)
-        # save x-axis of the middle of the word as the first element of the array
-        # and the text is the second element
-        words[round(yMiddle, -1)].append([xMiddle, r[1]])
-        
-    table = []
-    for word in words:
-        words[word].sort()
-        # include rows if only have more than 3 columns
-        if len(words[word]) >= 3:
-            table.append(words[word])
-    # find the row that has the largest column number
-    longestRow = max(table)
+    if i != 0:
+        print(f"{i} tries...")
 
-    startingPoint = 0
-    for i, x in enumerate(longestRow):
-        # save the starting and the end point of the column in xPositions array
-        endPoint = startingPoint + ((x[0] - startingPoint) * 2)
-        xPositions.append([startingPoint, endPoint])
-        startingPoint = endPoint
+    words = defaultdict(list)
+    xPositions = []
+    try:
+        words = reader.readtext("img/" + filename)
+    except Exception:
+        pass
 
-    # start building html tag
-    htmlCode = "<table>"
-    for index, value in enumerate(table):
-        # if first row, column tag is th, else td
-        htmlCode += "<tr>"
-        xPositionIndex = 0
-        if index == 0:
-            columnTag = "th"
-        else:
-            columnTag = "td"
+    output = ""
+    for r in words:
+        temp = r[1].replace("\'", " ")
+        temp = temp.replace("\\", "")
+        temp = temp.replace('\"', '\""')
+        output += temp + "||"
 
-        for index2, position in enumerate(xPositions):
-            # if middle x_positions of the columns are in between starting and end point of the longest row
-            # add text to the column, or add a em
-            try:
-                if xPositions[index2][0] < table[index][xPositionIndex][0] and table[index][xPositionIndex][0] < xPositions[index2][1]:
-                    htmlCode += "<"+columnTag+">"
-                    htmlCode += table[index][xPositionIndex][1]
-                    htmlCode += "</"+columnTag+">"
-                    xPositionIndex += 1
-                else:
-                    htmlCode += "<"+columnTag+"></"+columnTag+">"
-            except IndexError:
-                htmlCode += "<"+columnTag+"></"+columnTag+">"
-                pass
+    #index += 1
+    print(output)
 
-        htmlCode += "</tr>"
-
-    htmlCode += "</table>\n"
-    print(htmlCode)
-    table_index += 1
+    if output != "":
+        update_sql = f"UPDATE all_img SET ocr2 = '{output}' WHERE img_no = {imgNo}"
+        mycursor.execute(update_sql)
+        mydb.commit()
+    try:
+        os.remove(f"img/{filename}")
+        print(f"{imgNo}. {imgURL}/{filename} updated at {datetime.datetime.now()}")
+    except OSError:
+        print(f"{imgNo}. {imgURL}/{filename} NOT FOUND")
+        pass
 
 endTime = time.time()
 print(endTime - startTime)
