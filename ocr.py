@@ -20,11 +20,15 @@ sql = "SELECT * FROM all_img WHERE ocr2 is NULL LIMIT 1"
 #sql = "SELECT * FROM all_img WHERE img_no = 28"
 
 #reader = easyocr.Reader(['ch_sim','en'])
-reader = easyocr.Reader(['ch_sim', 'en'])
+reader = easyocr.Reader(['ch_sim'])
 
 startTime = time.time()
 
-
+def detect_chinese(str):
+	for ch in str:
+		if u'\u4e00' <= ch <= u'\u9fff':
+			return True
+	return False
 
 #index = 1
 while True:
@@ -83,6 +87,9 @@ while True:
         temp = temp.replace("\\", "")
         temp = temp.replace('\"', '\""')
         output += temp + "||"
+
+    if detect_chinese(output) is False:
+        output = ""
 
     #index += 1
     print(output)
